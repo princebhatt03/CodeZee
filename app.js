@@ -25,11 +25,13 @@ app.post("/tasks", (req, res) => {
   }
 
   const { title } = req.body;
+  const trimmedTitle =
+    typeof title === "string" ? title.trim() : "";
 
   if (
     typeof title !== "string" ||
-    !title.trim() ||
-    title.trim().length > 100
+    !trimmedTitle ||
+    [...trimmedTitle].length > 100
   ) {
     return res.status(400).json({
       error: "Title must be a non-empty string of at most 100 characters"
@@ -38,7 +40,7 @@ app.post("/tasks", (req, res) => {
 
   const task = {
     id: nextId++,
-    title: title.trim(),
+    title: trimmedTitle,
     completed: false
   };
 
@@ -47,13 +49,28 @@ app.post("/tasks", (req, res) => {
   return res.status(201).json(task);
 });
 
+// Validate task IDs consistently for GET and DELETE
+function parseTaskId(rawId) {
+  if (!/^[1-9]\d*$/.test(rawId)) {
+    return null;
+  }
+
+  const id = Number(rawId);
+
+  if (!Number.isSafeInteger(id)) {
+    return null;
+  }
+
+  return id;
+}
+
 // Get a task by ID
 app.get("/tasks/:id", (req, res) => {
-  const id = Number(req.params.id);
+  const id = parseTaskId(req.params.id);
 
-  if (!Number.isInteger(id) || id <= 0) {
+  if (id === null) {
     return res.status(400).json({
-      error: "Task ID must be a positive integer"
+      error: "Task ID must be a positive safe integer"
     });
   }
 
@@ -70,11 +87,11 @@ app.get("/tasks/:id", (req, res) => {
 
 // Delete a task by ID
 app.delete("/tasks/:id", (req, res) => {
-  const id = Number(req.params.id);
+  const id = parseTaskId(req.params.id);
 
-  if (!Number.isInteger(id) || id <= 0) {
+  if (id === null) {
     return res.status(400).json({
-      error: "Task ID must be a positive integer"
+      error: "Task ID must be a positive safe integer"
     });
   }
 
