@@ -52,4 +52,22 @@ app.delete("/tasks/:id", (req, res) => {
   res.status(204).end();
 });
 
+if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+  return res.status(400).json({
+    error: "Request body must be a valid JSON object"
+  });
+}
+
+const { title } = req.body;
+
+if (
+  typeof title !== "string" ||
+  !title.trim() ||
+  title.trim().length > 100
+) {
+  return res.status(400).json({
+    error: "Title must be a non-empty string of at most 100 characters"
+  });
+}
+
 module.exports = app;
