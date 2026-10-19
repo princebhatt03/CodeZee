@@ -1,7 +1,7 @@
-
 const express = require("express");
 
 const app = express();
+
 app.use(express.json());
 
 let tasks = [];
@@ -9,28 +9,35 @@ let nextId = 1;
 
 // Get all tasks
 app.get("/tasks", (req, res) => {
-  res.json(tasks);
+  return res.status(200).json(tasks);
 });
 
 // Create a task
 app.post("/tasks", (req, res) => {
+  const body = req.body;
+
   if (
-    !req.body ||
-    typeof req.body !== "object" ||
-    Array.isArray(req.body)
+    body === null ||
+    typeof body !== "object" ||
+    Array.isArray(body)
   ) {
     return res.status(400).json({
       error: "Request body must be a valid JSON object"
     });
   }
 
-  const { title } = req.body;
-  const trimmedTitle =
-    typeof title === "string" ? title.trim() : "";
+  const { title } = body;
+
+  if (typeof title !== "string") {
+    return res.status(400).json({
+      error: "Title must be a non-empty string of at most 100 characters"
+    });
+  }
+
+  const trimmedTitle = title.trim();
 
   if (
-    typeof title !== "string" ||
-    !trimmedTitle ||
+    trimmedTitle.length === 0 ||
     [...trimmedTitle].length > 100
   ) {
     return res.status(400).json({
@@ -49,9 +56,12 @@ app.post("/tasks", (req, res) => {
   return res.status(201).json(task);
 });
 
-// Validate task IDs consistently for GET and DELETE
+// Parse positive decimal task IDs safely
 function parseTaskId(rawId) {
-  if (!/^[1-9]\d*$/.test(rawId)) {
+  if (
+    typeof rawId !== "string" ||
+    !/^[1-9]\d*$/.test(rawId)
+  ) {
     return null;
   }
 
@@ -82,7 +92,7 @@ app.get("/tasks/:id", (req, res) => {
     });
   }
 
-  return res.json(task);
+  return res.status(200).json(task);
 });
 
 // Delete a task by ID
@@ -108,7 +118,7 @@ app.delete("/tasks/:id", (req, res) => {
   return res.status(204).end();
 });
 
-// Handle malformed JSON requests
+// Handle malformed JSON request bodies
 app.use((err, req, res, next) => {
   if (
     err instanceof SyntaxError &&
