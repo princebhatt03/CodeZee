@@ -2,138 +2,203 @@ const request = require("supertest");
 const app = require("../app");
 
 describe("Task API", () => {
-  // GET all tasks
-  test("GET /tasks returns an array", async () => {
-    const response = await request(app).get("/tasks");
+  describe("GET /tasks", () => {
+    test("returns an array of tasks", async () => {
+      const response = await request(app).get("/tasks");
 
-    expect(response.status).toBe(200);
-    expect(Array.isArray(response.body)).toBe(true);
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body)).toBe(true);
+    });
   });
 
-  // Create tasks
-  test("POST /tasks creates a task", async () => {
-    const response = await request(app)
-      .post("/tasks")
-      .send({ title: "Assessment task" });
+  describe("POST /tasks", () => {
+    test("creates a task with a trimmed title and ID", async () => {
+      const response = await request(app)
+        .post("/tasks")
+        .send({ title: "  Assessment task  " });
 
-    expect(response.status).toBe(201);
-    expect(response.body.title).toBe("Assessment task");
-    expect(response.body.completed).toBe(false);
-    expect(response.body.id).toEqual(expect.any(Number));
-  });
+      expect(response.status).toBe(201);
+      expect(response.body).toEqual({
+        id: expect.any(Number),
+        title: "Assessment task",
+        completed: false,
+      });
+    });
 
-  test("POST /tasks rejects an empty title", async () => {
-    const response = await request(app)
-      .post("/tasks")
-      .send({ title: "   " });
+    test("persists the created task for subsequent GET requests", async () => {
+      const created = await request(app)
+        .post("/tasks")
+        .send({ title: "Persistence test" });
 
-    expect(response.status).toBe(400);
-  });
+      expect(created.status).toBe(201);
 
-  test("POST /tasks rejects a non-string title", async () => {
-    const response = await request(app)
-      .post("/tasks")
-      .send({ title: 123 });
+      const fetched = await request(app).get(
+        `/tasks/${created.body.id}`
+      );
 
-    expect(response.status).toBe(400);
-  });
+      expect(fetched.status).toBe(200);
+      expect(fetched.body).toEqual(created.body);
+    });
 
-  test("POST /tasks accepts a title of exactly 100 characters", async () => {
-    const title = "a".repeat(100);
-
-    const response = await request(app)
-      .post("/tasks")
-      .send({ title });
-
-    expect(response.status).toBe(201);
-    expect(response.body.title).toBe(title);
-    expect([...response.body.title]).toHaveLength(100);
-  });
-
-  test("POST /tasks rejects a title of 101 characters", async () => {
-    const response = await request(app)
-      .post("/tasks")
-      .send({ title: "a".repeat(101) });
-
-    expect(response.status).toBe(400);
-  });
-
-  test("POST /tasks rejects an array as the request body", async () => {
-    const response = await request(app)
-      .post("/tasks")
-      .send([{ title: "Invalid task" }]);
-
-    expect(response.status).toBe(400);
-  });
-
-  test("POST /tasks returns 400 for malformed JSON", async () => {
-    const response = await request(app)
-      .post("/tasks")
-      .set("Content-Type", "application/json")
-      .send('{"title":');
-
-    expect(response.status).toBe(400);
-    expect(response.body.error).toBe("Invalid JSON request body");
-  });
-
-  // Get task by ID
-  test.each(["1e0", "0x1", "0", "-1", "abc"])(
-    "GET /tasks/%s rejects an invalid ID",
-    async (id) => {
-      const response = await request(app).get(`/tasks/${id}`);
+    test("rejects an empty title", async () => {
+      const response = await request(app)
+        .post("/tasks")
+        .send({ title: "   " });
 
       expect(response.status).toBe(400);
-    }
-  );
+      expect(response.body.error).toBe(
+        "Title must be a non-empty string of at most 100 characters"
+      );
+    });
 
-  test("GET /tasks/:id returns a task that exists", async () => {
-    const created = await request(app)
-      .post("/tasks")
-      .send({ title: "Task to retrieve" });
+    test("rejects a missing title", async () => {
+      const response = await request(app)
+        .post("/tasks")
+        .send({});
 
-    const response = await request(app)
-      .get(`/tasks/${created.body.id}`);
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe(
+        "Title must be a non-empty string of at most 100 characters"
+      );
+    });
 
-    expect(response.status).toBe(200);
-    expect(response.body.id).toBe(created.body.id);
-    expect(response.body.title).toBe("Task to retrieve");
+    test("rejects a non-string title", async () => {
+      const response = await request(app)
+        .post("/tasks")
+        .send({ title: 123 });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe(
+        "Title must be a non-empty string of at most 100 characters"
+      );
+    });
+
+    test("rejects an array request body", async () => {
+      const response = await request(app)
+        .post("/tasks")
+        .send([{ title: "Invalid task" }]);
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe(
+        "Request body must be a valid JSON object"
+      );
+    });
+
+    test("accepts a title containing exactly 100 characters", async () => {
+      const title = "a".repeat(100);
+
+      const response = await request(app)
+        .post("/tasks")
+        .send({ title });
+
+      expect(response.status).toBe(201);
+      expect(response.body.title).toBe(title);
+      expect([...response.body.title]).toHaveLength(100);
+    });
+
+    test("rejects a title containing 101 characters", async () => {
+      const response = await request(app)
+        .post("/tasks")
+        .send({ title: "a".repeat(101) });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe(
+        "Title must be a non-empty string of at most 100 characters"
+      );
+    });
+
+    test("trims whitespace before validating title length", async () => {
+      const title = " ".repeat(5) + "a".repeat(100) + " ".repeat(5);
+
+      const response = await request(app)
+        .post("/tasks")
+        .send({ title });
+
+      expect(response.status).toBe(201);
+      expect(response.body.title).toBe("a".repeat(100));
+      expect([...response.body.title]).toHaveLength(100);
+    });
+
+    test("rejects malformed JSON with a clear error", async () => {
+      const response = await request(app)
+        .post("/tasks")
+        .set("Content-Type", "application/json")
+        .send('{"title":');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe(
+        "Invalid JSON request body"
+      );
+    });
   });
 
-  test("GET /tasks/:id returns 404 for a missing task", async () => {
-    const response = await request(app).get("/tasks/999999");
+  describe("GET /tasks/:id", () => {
+    test.each(["abc", "1e0", "0x1", "0", "-1", "1.5"])(
+      "rejects invalid task ID: %s",
+      async (id) => {
+        const response = await request(app).get(`/tasks/${id}`);
 
-    expect(response.status).toBe(404);
-    expect(response.body.error).toBe("Task not found");
+        expect(response.status).toBe(400);
+        expect(response.body.error).toBe(
+          "Task ID must be a positive safe integer"
+        );
+      }
+    );
+
+    test("returns an existing task", async () => {
+      const created = await request(app)
+        .post("/tasks")
+        .send({ title: "Retrieve task" });
+
+      const response = await request(app).get(
+        `/tasks/${created.body.id}`
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(created.body);
+    });
+
+    test("returns 404 when a task does not exist", async () => {
+      const response = await request(app).get("/tasks/999999");
+
+      expect(response.status).toBe(404);
+      expect(response.body.error).toBe("Task not found");
+    });
   });
 
-  // Delete tasks
-  test("DELETE /tasks/:id deletes an existing task", async () => {
-    const created = await request(app)
-      .post("/tasks")
-      .send({ title: "Task to delete" });
+  describe("DELETE /tasks/:id", () => {
+    test("deletes an existing task", async () => {
+      const created = await request(app)
+        .post("/tasks")
+        .send({ title: "Delete task" });
 
-    const response = await request(app)
-      .delete(`/tasks/${created.body.id}`);
+      const id = created.body.id;
 
-    expect(response.status).toBe(204);
-    expect(response.text).toBe("");
+      const deleted = await request(app).delete(`/tasks/${id}`);
 
-    const lookup = await request(app)
-      .get(`/tasks/${created.body.id}`);
+      expect(deleted.status).toBe(204);
+      expect(deleted.text).toBe("");
 
-    expect(lookup.status).toBe(404);
-  });
+      const fetched = await request(app).get(`/tasks/${id}`);
 
-  test("DELETE /tasks/:id returns 404 for a missing task", async () => {
-    const response = await request(app).delete("/tasks/999999");
+      expect(fetched.status).toBe(404);
+      expect(fetched.body.error).toBe("Task not found");
+    });
 
-    expect(response.status).toBe(404);
-    expect(response.body.error).toBe("Task not found");
-  });
+    test("returns 404 when deleting a nonexistent task", async () => {
+      const response = await request(app).delete("/tasks/999999");
 
-  test("DELETE /tasks/:id rejects an invalid ID", async () => {
-    const response = await request(app).delete("/tasks/1e0");
+      expect(response.status).toBe(404);
+      expect(response.body.error).toBe("Task not found");
+    });
 
-    expect(response.status).toBe(400);
+    test("rejects an invalid task ID", async () => {
+      const response = await request(app).delete("/tasks/1e0");
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe(
+        "Task ID must be a positive safe integer"
+      );
+    });
   });
 });
